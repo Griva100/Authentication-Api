@@ -20,6 +20,9 @@ const Home = () => {
     <div>
       <h2>Welcome to Home Page</h2>
       <button onClick={handleLogout}>Logout</button>
+      <p>
+        Here, you can check <span onClick={() => navigate("/users")} style={{ color: 'blue', cursor: 'pointer' }}>Registered data</span>
+      </p>
     </div>
   );
 };
