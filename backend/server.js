@@ -17,4 +17,5 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 
 const PORT = process.env.PORT || 5000;
+console.log("To download the users data, go to http://localhost:5000/api/auth/export-users");
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

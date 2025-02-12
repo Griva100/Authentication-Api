@@ -29,6 +29,11 @@ const User = {
       totalUsers: result.recordsets[1][0].TotalUsers, // Second result set (total count)
     };
   },
+
+  getAllUsers: async () => {
+    const result = await sql.query`SELECT id, name, email FROM Users`;
+    return result.recordset;
+  }
 };
 
 module.exports = User;

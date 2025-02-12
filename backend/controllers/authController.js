@@ -1,7 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
-const fs = require("fs");
 const ExcelJS = require("exceljs");
 
 exports.register = async (req, res) => {
@@ -65,6 +64,48 @@ exports.getUsers = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.exportUsersToExcel = async (req, res) => {
+  try {
+    const users = await User.getAllUsers(); // Fetch all users
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: "No users found" });
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Users");
+
+    // Define columns
+    worksheet.columns = [
+      { header: "ID", key: "id", width: 10 },
+      { header: "Name", key: "name", width: 20 },
+      { header: "Email", key: "email", width: 30 }
+    ];
+
+    // Add user data to worksheet
+    users.forEach(user => {
+      worksheet.addRow(user);
+    });
+
+    // Set response headers
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=users.xlsx"
+    );
+
+    // Write to response
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Error exporting users:", error);
     res.status(500).json({ message: "Server error" });
   }
 };

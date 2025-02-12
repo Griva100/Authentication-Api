@@ -24,6 +24,11 @@ const Users = () => {
     }
   };
 
+  // Function to download Excel file
+  const downloadExcel = () => {
+    window.location.href = "http://localhost:5000/api/auth/export-users";
+  };
+
   return (
     <div>
       <h2>Registered Users</h2>
@@ -51,6 +56,10 @@ const Users = () => {
       <p>
         Already registered? <span onClick={() => navigate("/login")} style={{ color: 'blue', cursor: 'pointer' }}>Login here</span>
       </p>
+      {/* Button to download the Excel file */}
+      <button onClick={downloadExcel} style={{ marginTop: "10px" }}>
+        Download Excel
+      </button>
     </div>
   );
 };
