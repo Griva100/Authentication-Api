@@ -20,6 +20,11 @@ const User = {
     await sql.query`INSERT INTO Users (name, email, password) VALUES (${name}, ${email}, ${hashedPassword})`;
   },
 
+  insertMany: async (users) => {
+    const values = users.map(({ name, email, hashedPassword }) => `('${name}', '${email}', '${hashedPassword}')`).join(",");
+    await sql.query(`INSERT INTO Users (name, email, password) VALUES ${values}`);
+  },
+
   getUsersPaginated: async (pageNumber, pageSize) => {
     const result = await sql.query`
       EXEC GetUsersWithPagination ${pageNumber}, ${pageSize}
