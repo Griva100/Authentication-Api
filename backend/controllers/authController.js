@@ -112,24 +112,6 @@ exports.exportUsersToExcel = async (req, res) => {
   }
 };
 
-// Validation Function
-// const validateUserInput = (name, email, password) => {
-//   const nameRegex = /^[A-Za-z]{3,}$/;
-//   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-//   const passwordRegex = /^(?=.*[A-Z])(?=.*[!@#$%^&*~_]).{6,}$/;
-
-//   if (!name || !nameRegex.test(name)) {
-//     return "Invalid name: At least 3 characters, only letters allowed.";
-//   }
-//   if (!email || !emailRegex.test(email)) {
-//     return "Invalid email format.";
-//   }
-//   if (!password || !passwordRegex.test(password)) {
-//     return "Invalid password: Must be at least 6 characters, contain one uppercase letter and one special character (!@#$%^&*~_).";
-//   }
-//   return null;
-// };
-
 exports.importUsersFromExcel = async (req, res) => {
   try {
     if (!req.file) {
@@ -150,38 +132,47 @@ exports.importUsersFromExcel = async (req, res) => {
 
     console.log("Parsed Data:", data); //  Debug parsed data
 
-    const usersToInsert = [];
+    // const usersToInsert = [];
+    const importedUsers = [];
+    const errors = [];
 
-    for (const row of data) {
+    // Regex for email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    for (const [index, row] of data.entries()) {
       const { name, email, password } = row;
 
+      // Collect validation errors instead of stopping execution
       if (!name || !email || !password) {
-        return res.status(400).json({ message: "Invalid file format. Name, email, and password are required." });
+        errors.push(`Row ${index + 2}: Missing required fields (name, email, or password).`);
+        continue;
       }
 
-      // // Validate user input
-      // const validationError = validateUserInput(name, email, password);
-      // if (validationError) {
-      //   return res.status(400).json({ message: `Error in row ${row}: ${validationError}` });
-      // }
+      if (!emailRegex.test(email)) {
+        errors.push(`Row ${index + 2}: Invalid email format (${email}).`);
+        continue;
+      }
 
-      // Check if user already exists
       const existingUser = await User.findByEmail(email);
       if (existingUser) {
-        return res.status(400).json({ message: `User with email ${email} already exists.` });
+        errors.push(`Row ${index + 2}: User with email ${email} already exists.`);
+        continue;
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
       await User.createUser(name, email, hashedPassword);
+      importedUsers.push({ name, email });
       // usersToInsert.push({ name, email, password: hashedPassword });
     }
-    // console.log("Users to Insert:", usersToInsert); // ✅ Debug before inserting
+    // console.log("Users to Insert:", usersToInsert); //  Debug before inserting
 
     // Insert users into the database
     // await User.insertMany(usersToInsert);
 
     fs.unlinkSync(filePath); // Delete the uploaded file
-    res.status(201).json({ message: "Users imported successfully" });
+    res.status(201).json({
+      message: "Users imported successfully", importedUsers, errors, // Return all errors
+    });
   } catch (error) {
     console.error("Import error:", error);
     res.status(500).json({ message: "Server error" });

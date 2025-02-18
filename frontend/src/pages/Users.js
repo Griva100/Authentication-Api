@@ -5,6 +5,7 @@ import "bootstrap/dist/css/bootstrap.min.css";
 
 const Users = () => {
   const [users, setUsers] = useState([]);
+  const [importedUsers, setImportedUsers] = useState([]); // Imported users
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [file, setFile] = useState(null);
@@ -32,8 +33,22 @@ const Users = () => {
     window.location.href = "http://localhost:5000/api/auth/export-users";
   };
 
+  // Handle file selection
   const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
+    const selectedFile = e.target.files[0];
+
+    if (!selectedFile) {
+      alert("Please select a file.");
+      return;
+    }
+
+    // Validate file type
+    if (!selectedFile.name.endsWith(".xlsx")) {
+      alert("Invalid file format. Please upload an Excel file (.xlsx).");
+      fileInputRef.current.value = "";
+      return;
+    }
+    setFile(selectedFile);
   };
 
   const handleUpload = async () => {
@@ -47,15 +62,24 @@ const Users = () => {
     console.log("Importing Users Data:", formData);
 
     try {
-      await axios.post("http://localhost:5000/api/auth/import-users", formData, {
+      const response = await axios.post("http://localhost:5000/api/auth/import-users", formData, {
         headers: { "Content-Type": "multipart/form-data" },
         withCredentials: true,
       });
 
       alert("Users imported successfully");
+
+      // Update state with successfully imported users
+      setImportedUsers(response.data.importedUsers || []);
+
+      // If there are errors, display them in an alert or UI
+      if (response.data.errors.length > 0) {
+        alert("Some rows had errors:\n" + response.data.errors.join("\n"));
+      }
+
       setFile(null);
       fetchUsers(); // Refresh the user list
-      
+
       // Reset file input field
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -124,6 +148,24 @@ const Users = () => {
         <button className="btn btn-secondary" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</button>
       </div>
       <button onClick={downloadExcel} className="btn btn-success mt-3">Download Excel</button>
+
+      <h2 className="text-center mt-4">Imported Users</h2>
+      <table className="table table-bordered table-striped">
+        <thead className="table-warning">
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+          </tr>
+        </thead>
+        <tbody>
+          {importedUsers.map((user, index) => (
+            <tr key={index}>
+              <td>{user.name}</td>
+              <td>{user.email}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       <div className="mt-4">
         <input type="file" accept=".xlsx" onChange={handleFileChange} ref={fileInputRef} />
