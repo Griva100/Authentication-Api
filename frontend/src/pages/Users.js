@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import CryptoJS from "crypto-js";
+import * as xlsx from "xlsx";
 import "bootstrap/dist/css/bootstrap.min.css";
+
+const encryptionKey = 'my-strong-secret-key-1234';
+
+// AES decryption function
+const decryptData = (cipherText) => {
+  const bytes = CryptoJS.AES.decrypt(cipherText, encryptionKey);
+  return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+};
 
 const Users = () => {
   const [users, setUsers] = useState([]);
@@ -10,7 +19,6 @@ const Users = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [file, setFile] = useState(null);
   const fileInputRef = useRef(null);
-  const navigate = useNavigate();
   const limit = 5;
 
   useEffect(() => {
@@ -21,7 +29,8 @@ const Users = () => {
   const fetchUsers = async () => {
     try {
       const response = await axios.get(`http://localhost:5000/api/auth/users?page=${page}&limit=${limit}`, { withCredentials: true });
-      setUsers(response.data.users);
+      const decryptedUsers = decryptData(response.data.users);
+      setUsers(decryptedUsers);
       setTotalPages(response.data.totalPages); // Set total pages from API
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -29,8 +38,32 @@ const Users = () => {
   };
 
   // Function to download Excel file
-  const downloadExcel = () => {
-    window.location.href = "http://localhost:5000/api/auth/export-users";
+  const downloadExcel = async () => {
+    // window.location.href = "http://localhost:5000/api/auth/export-users";
+    try {
+      const response = await axios.get("http://localhost:5000/api/auth/export-users", { withCredentials: true });
+
+      if (!response.data.encryptedData) {
+        alert("No data received");
+        return;
+      }
+
+      // Decrypt the received Excel file data
+      const decryptedData = decryptData(response.data.encryptedData);
+      const excelBlob = new Blob([Uint8Array.from(atob(decryptedData), c => c.charCodeAt(0))], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      // Create a link to download the decrypted file
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(excelBlob);
+      link.download = "users.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Error downloading file:", error);
+    }
   };
 
   // Handle file selection
@@ -57,37 +90,63 @@ const Users = () => {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    console.log("Importing Users Data:", formData);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const fileData = new Uint8Array(event.target.result); // Get raw file data
 
-    try {
-      const response = await axios.post("http://localhost:5000/api/auth/import-users", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-        withCredentials: true,
-      });
+        // Read Excel file as JSON
+        const workbook = xlsx.read(fileData, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const jsonData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-      alert("Users imported successfully");
+        // Convert JSON to string
+        const jsonString = JSON.stringify(jsonData);
 
-      // Update state with successfully imported users
-      setImportedUsers(response.data.importedUsers || []);
+        // Encrypt JSON data
+        const encryptedData = CryptoJS.AES.encrypt(jsonString, encryptionKey).toString();
 
-      // If there are errors, display them in an alert or UI
-      if (response.data.errors.length > 0) {
-        alert("Some rows had errors:\n" + response.data.errors.join("\n"));
+        // const formData = new FormData();
+        // formData.append("file", file);
+
+        // console.log("Importing Users Data:", formData);
+
+        // const response = await axios.post("http://localhost:5000/api/auth/import-users", formData,
+        //   {
+        //     headers: { "Content-Type": "multipart/form-data" },
+        //     withCredentials: true,
+        //   });
+
+        // Send encrypted file data as JSON payload
+        const response = await axios.post("http://localhost:5000/api/auth/import-users",
+          { encryptedData },
+          { headers: { "Content-Type": "application/json" } }
+        );
+
+        setImportedUsers(jsonData || []);
+        //   // Update state with successfully imported users
+        // setImportedUsers(response.data.importedUsers || []);
+
+        // If there are errors, display them in an alert or UI
+        if (response.data.errors.length > 0) {
+          alert("Some rows had errors:\n" + response.data.errors.join("\n"));
+        } else {
+          alert("Users imported successfully");
+        }
+
+        setFile(null);
+        fetchUsers(); // Refresh the user list
+
+        // Reset file input field
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      } catch (error) {
+        console.error("Error importing users:", error);
+        alert(error.response?.data?.message || "Import failed");
       }
-
-      setFile(null);
-      fetchUsers(); // Refresh the user list
-
-      // Reset file input field
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    } catch (error) {
-      console.error("Error importing users:", error);
-      alert(error.response?.data?.message || "Import failed");
-    }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   return (
@@ -171,10 +230,6 @@ const Users = () => {
         <input type="file" accept=".xlsx" onChange={handleFileChange} ref={fileInputRef} />
         <button onClick={handleUpload} className="btn btn-primary ms-2">Import Users</button>
       </div>
-
-      <p className="mt-3 text-center">
-        Already registered? <span onClick={() => navigate("/login")} className="text-primary" style={{ cursor: "pointer" }}>Login here</span>
-      </p>
     </div>
   );
 };

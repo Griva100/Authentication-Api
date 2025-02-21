@@ -3,7 +3,15 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import * as Yup from "yup";
+import CryptoJS from "crypto-js";
 import "bootstrap/dist/css/bootstrap.min.css";
+
+const encryptionKey = 'my-strong-secret-key-1234';
+
+// AES encryption function
+const encryptData = (data) => {
+  return CryptoJS.AES.encrypt(JSON.stringify(data), encryptionKey).toString();
+};
 
 const Login = () => {
   // const [email, setEmail] = useState("");
@@ -35,7 +43,14 @@ const Login = () => {
 
   const handleSubmit = async (values, { setSubmitting }) => {
     try {
-      await axios.post("http://localhost:5000/api/auth/login", values, { withCredentials: true });
+      // await axios.post("http://localhost:5000/api/auth/login", values, { withCredentials: true });
+      const encryptedData = encryptData(values);
+      const response = await axios.post(
+        "http://localhost:5000/api/auth/login",
+        { data: encryptedData },
+        { withCredentials: true }
+      );
+      console.log("Response:", response.data);
       alert("Login successful");
       navigate("/home");
     } catch (error) {

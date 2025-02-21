@@ -2,12 +2,26 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const ExcelJS = require("exceljs");
-const fs = require("fs");
-const xlsx = require("xlsx");
+// const fs = require("fs");
+const CryptoJS = require("crypto-js");
+
+const encryptionKey = 'my-strong-secret-key-1234';
+
+// AES encryption function
+const encryptData = (data) => {
+  return CryptoJS.AES.encrypt(JSON.stringify(data), encryptionKey).toString();
+};
+
+// AES decryption function
+const decryptData = (cipherText) => {
+  const bytes = CryptoJS.AES.decrypt(cipherText, encryptionKey);
+  return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+};
 
 exports.register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const decryptedBody = decryptData(req.body.data);
+    const { name, email, password } = decryptedBody;
 
     // let user = await User.findOne({ email });
     let user = await User.findByEmail(email);
@@ -18,7 +32,6 @@ exports.register = async (req, res) => {
     // user = new User({ name, email, password: hashedPassword });
     // await user.save();
     await User.createUser(name, email, hashedPassword);
-
     res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -27,7 +40,8 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const decryptedBody = decryptData(req.body.data);
+    const { email, password } = decryptedBody;
 
     // const user = await User.findOne({ email });
     const user = await User.findByEmail(email);
@@ -58,8 +72,10 @@ exports.getUsers = async (req, res) => {
     limit = parseInt(limit) || 5;
 
     const { users, totalUsers } = await User.getUsersPaginated(page, limit);
+    const encryptedUsers = encryptData(users);
+
     res.json({
-      users,
+      users: encryptedUsers,
       totalUsers,
       totalPages: Math.ceil(totalUsers / limit),
       currentPage: page,
@@ -75,7 +91,7 @@ exports.exportUsersToExcel = async (req, res) => {
     const users = await User.getAllUsers(); // Fetch all users
 
     if (users.length === 0) {
-      return res.status(404).json({ message: "No users found" });
+      return res.status(404).json({ encryptedData: encryptData(JSON.stringify({ message: "No users found" })) });
     }
 
     const workbook = new ExcelJS.Workbook();
@@ -93,19 +109,27 @@ exports.exportUsersToExcel = async (req, res) => {
       worksheet.addRow(user);
     });
 
-    // Set response headers
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    );
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=users.xlsx"
-    );
+    // // Set response headers
+    // res.setHeader(
+    //   "Content-Type",
+    //   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    // );
+    // res.setHeader(
+    //   "Content-Disposition",
+    //   "attachment; filename=users.xlsx"
+    // );
 
-    // Write to response
-    await workbook.xlsx.write(res);
-    res.end();
+    // // Write to response
+    // await workbook.xlsx.write(res);
+    // res.end();
+
+    // Convert workbook to a buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    // Encrypt the buffer data
+    const encryptedData = encryptData(buffer.toString("base64"));
+
+    res.json({ encryptedData }); // Send encrypted Excel data
   } catch (error) {
     console.error("Error exporting users:", error);
     res.status(500).json({ message: "Server error" });
@@ -114,23 +138,35 @@ exports.exportUsersToExcel = async (req, res) => {
 
 exports.importUsersFromExcel = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
+    // if (!req.file) {
+    //   return res.status(400).json({ message: "No file uploaded" });
+    // }
+
+    // Decrypt the file data if sent in encrypted form
+    const { encryptedData } = req.body;
+    if (!encryptedData) {
+      return res.status(400).json({ message: "Missing encrypted file data" });
     }
 
-    // Read uploaded Excel file
-    const filePath = req.file.path;
-    console.log(filePath);
-    if (!filePath.endsWith(".xlsx") && !filePath.endsWith(".xls")) {
-      fs.unlinkSync(filePath);
-      return res.status(400).json({ message: "Invalid file format. Please upload an Excel file." });
+    const decryptedData = decryptData(encryptedData);
+    if (!decryptedData) {
+      return res.status(400).json({ message: "Decryption failed" });
     }
 
-    const workbook = xlsx.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+    // //Read uploaded Excel file
+    // const filePath = req.file.path;
+    // console.log(filePath);
 
-    console.log("Parsed Data:", data); //  Debug parsed data
+    // if (!filePath.endsWith(".xlsx") && !filePath.endsWith(".xls")) {
+    //   fs.unlinkSync(filePath);
+    //   return res.status(400).json({ message: "Invalid file format. Please upload an Excel file." });
+    // }
+
+    // const workbook = xlsx.readFile(tempFilePath);
+    // const sheetName = workbook.SheetNames[0];
+    // const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+    // console.log("Parsed Data:", data); //  Debug parsed data
 
     // const usersToInsert = [];
     const importedUsers = [];
@@ -138,9 +174,10 @@ exports.importUsersFromExcel = async (req, res) => {
 
     // Regex for email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const passwordRegex = /^(?=.*[A-Z])(?=.*[!@#$%^&*~_]).{6,}$/;
 
-    for (const [index, row] of data.entries()) {
-      const { name, email, password } = row;
+    for (const [index, row] of decryptedData.entries()) {
+      let { name, email, password } = row;
 
       // Collect validation errors instead of stopping execution
       if (!name || !email || !password) {
@@ -153,6 +190,11 @@ exports.importUsersFromExcel = async (req, res) => {
         continue;
       }
 
+      if (!passwordRegex.test(password)) {
+        errors.push(`Row ${index + 2}: Password must be at least 6 characters long, contain at least one uppercase letter, and one special character (!@#$%^&*~_).`);
+        continue;
+      }
+
       const existingUser = await User.findByEmail(email);
       if (existingUser) {
         errors.push(`Row ${index + 2}: User with email ${email} already exists.`);
@@ -161,15 +203,16 @@ exports.importUsersFromExcel = async (req, res) => {
 
       const hashedPassword = await bcrypt.hash(password, 10);
       await User.createUser(name, email, hashedPassword);
-      importedUsers.push({ name, email });
+      importedUsers.push({ name, email, password: hashedPassword });
       // usersToInsert.push({ name, email, password: hashedPassword });
     }
-    // console.log("Users to Insert:", usersToInsert); //  Debug before inserting
+    console.log("Users to Insert:", importedUsers); //  Debug before inserting
 
     // Insert users into the database
-    // await User.insertMany(usersToInsert);
-
-    fs.unlinkSync(filePath); // Delete the uploaded file
+    // if (importedUsers.length > 0) {
+    // await User.insertMany(importedUsers);
+    // }
+    // fs.unlinkSync(filePath); // Delete the uploaded file
     res.status(201).json({
       message: "Users imported successfully", importedUsers, errors, // Return all errors
     });
