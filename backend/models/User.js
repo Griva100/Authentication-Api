@@ -17,14 +17,27 @@ const User = {
     return result.recordset[0]; // Return user object if found
   },
 
-  createUser: async (name, email, password) => {
-    await sql.query`INSERT INTO Users (name, email, password) VALUES (${name}, ${email}, ${password})`;
+  createUser: async (name, email, password, avatar = null) => {
+    console.log("Inserting User:", { name, email, password, avatar });
+    await sql.query`INSERT INTO Users (name, email, password, avatar) VALUES (${name}, ${email}, ${password}, ${avatar === "null" ? null : avatar})`;
   },
 
-  insertMany: async (users) => {
-    const values = users.map(({ name, email, password }) => `('${name}', '${email}', '${password}')`).join(",");
-    await sql.query(`INSERT INTO Users (name, email, password) VALUES ${values}`);
+  getUserById: async (id) => {
+    const result = await sql.query`SELECT id, name, email, avatar FROM Users WHERE id = ${id}`;
+    return result.recordset[0] || null;
   },
+
+  updateUser: async (userId, name, email, avatarPath) => {
+    await sql.query`
+      UPDATE Users 
+      SET name = ${name}, email = ${email}, avatar = ${avatarPath} 
+      WHERE id = ${userId}`;
+  },
+
+  // insertMany: async (users) => {
+  //   const values = users.map(({ name, email, password }) => `('${name}', '${email}', '${password}')`).join(",");
+  //   await sql.query(`INSERT INTO Users (name, email, password) VALUES ${values}`);
+  // },
 
   getUsersPaginated: async (pageNumber, pageSize) => {
     const result = await sql.query`

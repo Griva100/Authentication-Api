@@ -13,7 +13,7 @@ const encryptData = (data) => {
   return CryptoJS.AES.encrypt(JSON.stringify(data), encryptionKey).toString();
 };
 
-const Login = () => {
+const Login = ({ setIsLoggedIn, refreshProfile }) => {
   // const [email, setEmail] = useState("");
   // const [password, setPassword] = useState("");
   const navigate = useNavigate();
@@ -50,8 +50,14 @@ const Login = () => {
         { data: encryptedData },
         { withCredentials: true }
       );
-      console.log("Response:", response.data);
+      // Save token if provided (assuming response.data.token exists)
+      if (response.data.token) {
+        localStorage.setItem("jwtToken", response.data.token);
+      }
+      setIsLoggedIn(true); // Update navbar state
       alert("Login successful");
+      // Call refreshProfile once after login completes.
+      await refreshProfile();
       navigate("/home");
     } catch (error) {
       alert(error.response?.data?.message || "Login failed");

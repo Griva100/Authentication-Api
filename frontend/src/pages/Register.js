@@ -13,6 +13,10 @@ const encryptData = (data) => {
   return CryptoJS.AES.encrypt(JSON.stringify(data), encryptionKey).toString();
 };
 
+// Yup file validation helper
+const FILE_SIZE = 1024 * 1024 * 5; // 5MB max file size
+const SUPPORTED_FORMATS = ["image/jpg", "image/jpeg", "image/png"];
+
 const Register = () => {
   // const [name, setName] = useState("");
   // const [email, setEmail] = useState("");
@@ -31,6 +35,17 @@ const Register = () => {
       .matches(/[A-Z]/, "Must have at least one uppercase letter")
       .matches(/[!@#$%^&*~_]/, "Must have at least one special character (!@#$%^&*~_)")
       .required("Password is required"),
+    avatar: Yup.mixed()
+      .nullable() // Explicitly allows null
+      .notRequired() // Ensures it's optional
+      .test("fileType", "Unsupported file format", (value) => {
+        if (!value) return true; // it's ok if not provided
+        return SUPPORTED_FORMATS.includes(value.type);
+      })
+      .test("fileSize", "File size is too large", (value) => {
+        if (!value) return true;
+        return value.size <= FILE_SIZE;
+      })
   });
 
   // const handleSubmit = async (e) => {
@@ -47,10 +62,35 @@ const Register = () => {
 
   // Handle Form Submission
   const handleSubmit = async (values, { setSubmitting }) => {
+    //   // const encryptedData = encryptData(values);
+    //   const response = await axios.post("http://localhost:5000/api/auth/register", { data: encryptedData }, { withCredentials: true });
     try {
-      const encryptedData = encryptData(values);
-      const response = await axios.post("http://localhost:5000/api/auth/register", { data: encryptedData }, { withCredentials: true });
-      console.log("response:" , response);
+      // Create FormData to combine encrypted JSON and file upload.
+      const formData = new FormData();
+      // Encrypt non-file fields
+      const payload = {
+        name: values.name,
+        email: values.email,
+        password: values.password,
+      };
+      const encryptedData = encryptData(payload);
+      formData.append("data", encryptedData);
+      // Append file if provided
+      if (values.avatar) {
+        formData.append("avatar", values.avatar);
+      } else {
+        formData.append("avatar", "null"); // Explicitly send "null" as a string
+      }
+
+      const response = await axios.post(
+        "http://localhost:5000/api/auth/register",
+        formData,
+        {
+          withCredentials: true,
+          headers: { "Content-Type": "multipart/form-data" }
+        }
+      );
+      console.log("response:", response);
       alert("Registration successful");
       navigate("/login");
     } catch (error) {
@@ -75,11 +115,11 @@ const Register = () => {
     <div className="container mt-4">
       <h2 className="text-center">Register</h2>
       <Formik
-        initialValues={{ name: "", email: "", password: "" }}
+        initialValues={{ name: "", email: "", password: "", avatar: null }}
         validationSchema={validationSchema}
         onSubmit={handleSubmit}
       >
-        {({ isSubmitting }) => (
+        {({ setFieldValue, isSubmitting }) => (
           <Form className="mx-auto w-50 border p-4 rounded shadow-sm">
             <div className="mb-3">
               <label>Name</label>
@@ -100,6 +140,19 @@ const Register = () => {
                 </button>
               </div>
               <ErrorMessage name="password" component="div" className="text-danger" />
+            </div>
+            <div className="mb-3">
+              <label>Avatar (Profile Picture)</label>
+              <input
+                name="avatar"
+                type="file"
+                accept="image/*"
+                className="form-control"
+                onChange={(event) => {
+                  setFieldValue("avatar", event.currentTarget.files[0]);
+                }}
+              />
+              <ErrorMessage name="avatar" component="div" className="text-danger" />
             </div>
             <button type="submit" className="btn btn-primary w-100" disabled={isSubmitting}>
               {isSubmitting ? "Registering..." : "Register"}

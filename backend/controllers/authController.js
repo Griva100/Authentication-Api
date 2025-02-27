@@ -22,6 +22,7 @@ exports.register = async (req, res) => {
   try {
     const decryptedBody = decryptData(req.body.data);
     const { name, email, password } = decryptedBody;
+    const avatar = req.avatar ? req.avatar.filename : null; // Store filename if uploaded, else null
 
     // let user = await User.findOne({ email });
     let user = await User.findByEmail(email);
@@ -31,7 +32,8 @@ exports.register = async (req, res) => {
 
     // user = new User({ name, email, password: hashedPassword });
     // await user.save();
-    await User.createUser(name, email, hashedPassword);
+
+    await User.createUser(name, email, hashedPassword, avatar);
     res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
     res.status(500).json({ message: "Server error" });
@@ -51,7 +53,7 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
     res.cookie("token", token, { httpOnly: true, secure: true, sameSite: "Strict" });
     res.json({ message: "Login successful", token });
@@ -85,6 +87,43 @@ exports.getUsers = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+exports.getProfile = async (req, res) => {
+  try {
+    const user = await User.getUserById(req.user);
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+    const encryptedProfile = encryptData(user);
+
+    res.json({ profile: encryptedProfile });
+  } catch (error) {
+    console.error("Get profile error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const userId = req.user; // Assume user ID is set in middleware
+
+    if (!req.body.data) {
+      return res.status(400).json({ message: "Missing encrypted data" });
+    }
+    const decryptedBody = decryptData(req.body.data);
+    const { name, email } = decryptedBody;
+
+    let avatarPath = req.body.avatar; // Keep existing avatar
+    if (req.file) {
+      avatarPath = req.file.filename; // Update only if a new file is uploaded
+    }
+
+    await User.updateUser(userId, name, email, avatarPath);
+    res.json({ message: "Profile updated successfully" });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+}
 
 exports.exportUsersToExcel = async (req, res) => {
   try {
