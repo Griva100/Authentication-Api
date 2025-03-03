@@ -28,7 +28,7 @@ const App = () => {
   // Reference to store the inactivity timeout ID.
   const inactivityTimeoutRef = useRef(null);
   // Timeout duration in milliseconds (10 minutes)
-  const INACTIVITY_TIMEOUT = 10 * 60 * 1000;
+  const INACTIVITY_TIMEOUT = 5 * 60 * 1000;
 
   // useEffect(() => {
   //   setIsLoggedIn(!!localStorage.getItem("jwtToken"));
@@ -57,9 +57,10 @@ const App = () => {
   const autoLogout = () => {
     console.log("User inactive. Logging out automatically.");
     localStorage.removeItem("jwtToken");
+    localStorage.removeItem("user");
     setIsLoggedIn(false);
     setUser(null);
-    <Navigate to="/login" />;
+    <Navigate to="/login" />
   };
 
   // Reset inactivity timer whenever there is user activity.
@@ -96,6 +97,16 @@ const App = () => {
     }
   }, [isLoggedIn]);
 
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/api/users"); // Adjust URL as needed
+      const data = await response.json();
+      console.log("Fetched Users:", data);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
+  };
+
   return (
     <Router>
       {/* <Navbar isLoggedIn={isLoggedIn} setIsLoggedIn={setIsLoggedIn} /> */}
@@ -111,7 +122,7 @@ const App = () => {
         <Route path="/home" element={<ProtectedRoute element={<Home />} />} />
         <Route path="/users" element={<ProtectedRoute element={<Users />} />} />
         <Route path="/profile" element={<ProtectedRoute element={<Profile refreshProfile={refreshProfile} />} />} />
-        <Route path="/import-export" element={<ProtectedRoute element={<ImportExport />} />} />
+        <Route path="/import-export" element={<ProtectedRoute element={<ImportExport fetchUsers={fetchUsers} />} />} />
         <Route path="*" element={<Navigate to={isLoggedIn ? "/home" : "/login"} />} />
       </Routes>
     </Router>

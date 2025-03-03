@@ -6,35 +6,34 @@ import "bootstrap/dist/css/bootstrap.min.css";
 
 const encryptionKey = 'my-strong-secret-key-1234';
 
-const encryptData = (data) => {
-  return CryptoJS.AES.encrypt(JSON.stringify(data), encryptionKey).toString();
-};
-
 const decryptData = (cipherText) => {
   const bytes = CryptoJS.AES.decrypt(cipherText, encryptionKey);
   return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
 };
 
-const ImportExport = () => {
-  const [importedUsers, setImportedUsers] = useState([]);
+const ImportExport = ({ fetchUsers }) => {
+  const [importedUsers, setImportedUsers] = useState([]); // Imported users
+  const [file, setFile] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Download Excel file of users
+  // Function to download Excel file
   const downloadExcel = async () => {
+    // window.location.href = "http://localhost:5000/api/auth/export-users";
     try {
-      const response = await axios.get("http://localhost:5000/api/auth/export-users", {
-        withCredentials: true,
-      });
+      const response = await axios.get("http://localhost:5000/api/auth/export-users", { withCredentials: true });
+
       if (!response.data.encryptedData) {
         alert("No data received");
         return;
       }
+
       // Decrypt the received Excel file data
       const decryptedData = decryptData(response.data.encryptedData);
-      const excelBlob = new Blob(
-        [Uint8Array.from(atob(decryptedData), (c) => c.charCodeAt(0))],
-        { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
-      );
+      const excelBlob = new Blob([Uint8Array.from(atob(decryptedData), c => c.charCodeAt(0))], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      // Create a link to download the decrypted file
       const link = document.createElement("a");
       link.href = URL.createObjectURL(excelBlob);
       link.download = "users.xlsx";
@@ -43,53 +42,92 @@ const ImportExport = () => {
       document.body.removeChild(link);
     } catch (error) {
       console.error("Error downloading file:", error);
-      alert(error.response?.data?.message || "Download failed");
     }
   };
 
-  // Handle file selection for import
+  // Handle file selection
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
+
     if (!selectedFile) {
       alert("Please select a file.");
       return;
     }
-    // Validate file extension (.xlsx)
+
+    // Validate file type
     if (!selectedFile.name.endsWith(".xlsx")) {
       alert("Invalid file format. Please upload an Excel file (.xlsx).");
       fileInputRef.current.value = "";
       return;
     }
-    importFile(selectedFile);
+    setFile(selectedFile);
   };
 
-  // Process file import
-  const importFile = (file) => {
+  const handleUpload = async () => {
+    if (!file) {
+      alert("Please select a file");
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const fileData = new Uint8Array(event.target.result);
-        // Parse the Excel file
+        const fileData = new Uint8Array(event.target.result); // Get raw file data
+
+        // Read Excel file as JSON
         const workbook = xlsx.read(fileData, { type: "array" });
         const sheetName = workbook.SheetNames[0];
         const jsonData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+        // Convert JSON to string
+        const jsonString = JSON.stringify(jsonData);
+
         // Encrypt JSON data
-        const encryptedData = encryptData(jsonData);
-        // Send encrypted data to the backend
-        const response = await axios.post(
-          "http://localhost:5000/api/auth/import-users",
+        const encryptedData = CryptoJS.AES.encrypt(jsonString, encryptionKey).toString();
+
+        // const formData = new FormData();
+        // formData.append("file", file);
+
+        // console.log("Importing Users Data:", formData);
+
+        // const response = await axios.post("http://localhost:5000/api/auth/import-users", formData,
+        //   {
+        //     headers: { "Content-Type": "multipart/form-data" },
+        //     withCredentials: true,
+        //   });
+
+        // Send encrypted file data as JSON payload
+        const response = await axios.post("http://localhost:5000/api/auth/import-users",
           { encryptedData },
-          { headers: { "Content-Type": "application/json" } }
+          {
+            headers: { "Content-Type": "application/json" }, withCredentials: true
+          }
         );
-        // Set imported users to state for display
-        setImportedUsers(jsonData || []);
-        if (response.data.errors && response.data.errors.length > 0) {
+
+        let importedData = jsonData.map((user, index) => ({
+          ...user,
+          hasError: response.data.errors.some((error) => error.includes(`Row ${index + 2}:`)),
+        }));
+
+        setImportedUsers(importedData);
+        // setImportedUsers(jsonData || []);
+        //   // Update state with successfully imported users
+        // setImportedUsers(response.data.importedUsers || []);
+
+        // If there are errors, display them in an alert or UI
+        if (response.data.errors.length > 0) {
           alert("Some rows had errors:\n" + response.data.errors.join("\n"));
         } else {
           alert("Users imported successfully");
         }
-        // Reset file input
-        if (fileInputRef.current) fileInputRef.current.value = "";
+
+        setFile(null);
+        fetchUsers(); // Refresh the user list
+
+        // Reset file input field
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
       } catch (error) {
         console.error("Error importing users:", error);
         alert(error.response?.data?.message || "Import failed");
@@ -101,35 +139,33 @@ const ImportExport = () => {
   return (
     <div className="container mt-4">
       <h2 className="text-center">Import / Export Users</h2>
-      <div className="d-flex justify-content-center mb-4">
-        <button onClick={downloadExcel} className="btn btn-success me-3">
-          Download Excel
-        </button>
-        <div>
-          <input type="file" accept=".xlsx" ref={fileInputRef} onChange={handleFileChange} />
+      <div className="mt-4">
+        <h4 className="d-inline me-3">Export Users data:</h4>
+        <button onClick={downloadExcel} className="btn btn-success">Download Excel</button>
+      </div>
+      <div>
+        <h3 className="text-center mt-4">Imported Users</h3>
+        <table className="table table-bordered">
+          <thead className="table-warning">
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+            </tr>
+          </thead>
+          <tbody>
+            {importedUsers.map((user, index) => (
+              <tr key={index} className={user.hasError ? "table-danger" : "table-success"}>
+                <td>{user.name}</td>
+                <td>{user.email}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="mt-4">
+          <input type="file" accept=".xlsx" onChange={handleFileChange} ref={fileInputRef} />
+          <button onClick={handleUpload} className="btn btn-primary ms-2">Import Users</button>
         </div>
       </div>
-      {importedUsers.length > 0 && (
-        <div>
-          <h3 className="text-center">Imported Users</h3>
-          <table className="table table-bordered table-striped">
-            <thead className="table-warning">
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-              </tr>
-            </thead>
-            <tbody>
-              {importedUsers.map((user, index) => (
-                <tr key={index}>
-                  <td>{user.name}</td>
-                  <td>{user.email}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 };

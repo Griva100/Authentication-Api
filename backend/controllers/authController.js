@@ -53,7 +53,7 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "10m" });
 
     res.cookie("token", token, { httpOnly: true, secure: true, sameSite: "Strict" });
     res.json({ message: "Login successful", token });
@@ -218,14 +218,32 @@ exports.importUsersFromExcel = async (req, res) => {
     for (const [index, row] of decryptedData.entries()) {
       let { name, email, password } = row;
 
-      // Collect validation errors instead of stopping execution
-      if (!name || !email || !password) {
-        errors.push(`Row ${index + 2}: Missing required fields (name, email, or password).`);
+      // **1. Check if the entire row is empty**
+      if (!name && !email && !password) {
+        continue; // Skip empty rows without pushing an error
+      }
+
+      // **2. Check for missing required fields**
+      const missingFields = [];
+      if (!name) missingFields.push("name");
+      if (!email) missingFields.push("email");
+      if (!password) missingFields.push("password");
+
+      if (missingFields.length > 0) {
+        errors.push(`Row ${index + 2}: Missing required fields (${missingFields.join(", ")}).`);
         continue;
       }
 
+      // **3. Validate email format**
       if (!emailRegex.test(email)) {
         errors.push(`Row ${index + 2}: Invalid email format (${email}).`);
+        continue;
+      }
+
+      // **4. Check if the user already exists**
+      const existingUser = await User.findByEmail(email);
+      if (existingUser) {
+        errors.push(`Row ${index + 2}: User with email ${email} already exists.`);
         continue;
       }
 
@@ -234,12 +252,7 @@ exports.importUsersFromExcel = async (req, res) => {
         continue;
       }
 
-      const existingUser = await User.findByEmail(email);
-      if (existingUser) {
-        errors.push(`Row ${index + 2}: User with email ${email} already exists.`);
-        continue;
-      }
-
+      // **5. Validate password format**
       const hashedPassword = await bcrypt.hash(password, 10);
       await User.createUser(name, email, hashedPassword);
       importedUsers.push({ name, email, password: hashedPassword });
