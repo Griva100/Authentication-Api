@@ -27,7 +27,7 @@ const Users = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await axios.get(`http://localhost:5000/api/auth/users?page=${page}&limit=${limit}`, { withCredentials: true });
+      const response = await axios.get(`${process.env.BASE_URL}/api/auth/users?page=${page}&limit=${limit}`, { withCredentials: true });
       const decryptedUsers = decryptData(response.data.users);
       setUsers(decryptedUsers);
       setTotalPages(response.data.totalPages); // Set total pages from API

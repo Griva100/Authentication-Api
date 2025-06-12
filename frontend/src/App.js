@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import Login from "./pages/Login";
@@ -17,11 +17,12 @@ const decryptData = (cipherText) => {
 };
 
 const ProtectedRoute = ({ element }) => {
-  const token = localStorage.getItem("jwtToken");
+  const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
   return token ? element : <Navigate to="/login" />;
 };
 
 const App = () => {
+  const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem("jwtToken"));
   // Assume that user data (e.g. avatar) is stored here after login
   const [user, setUser] = useState(null);
@@ -37,7 +38,7 @@ const App = () => {
   // Memoize refreshProfile without dependencies (other than stable ones)
   const refreshProfile = async () => {
     try {
-      const response = await fetch("http://localhost:5000/api/auth/profile", {
+      const response = await fetch(`${process.env.BASE_URL}/api/auth/profile`, {
         credentials: "include"
       });
       const data = await response.json();
@@ -60,7 +61,7 @@ const App = () => {
     localStorage.removeItem("user");
     setIsLoggedIn(false);
     setUser(null);
-    <Navigate to="/login" />
+    navigate("/login");
   };
 
   // Reset inactivity timer whenever there is user activity.
@@ -99,7 +100,7 @@ const App = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch("http://localhost:5000/api/users"); // Adjust URL as needed
+      const response = await fetch(`${process.env.BASE_URL}/api/users`);
       const data = await response.json();
       console.log("Fetched Users:", data);
     } catch (error) {
